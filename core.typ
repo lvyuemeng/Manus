@@ -19,7 +19,7 @@
   // page
   paper: "a4",
   // heading
-  head-numbering: "1",
+  head-numbering: "1.1",
   head1-size: 1.4em,
   head2-size: 1.2em,
   head-size: 1.2em,
