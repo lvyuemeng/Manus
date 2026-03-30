@@ -1,50 +1,84 @@
-#let script-size = 7.97224pt
-#let footnote-size = 8.50012pt
-#let small-size = 9.24994pt
-#let normal-size = 10.00002pt
-#let large-size = 17pt
+// ==================================================
+// core.typ — config resolution, style applicators, appendix
+// ==================================================
 
 #let config-store = state("tmpl-config", (:))
 
+// --------------------------------------------------
+// Deep-merge two dicts: sub-dicts merged recursively,
+// all other values replaced (second wins).
+// --------------------------------------------------
+#let deep-merge(base, over) = {
+  let result = base
+  for (k, v) in over {
+    result.insert(k,
+      if k in result and type(result.at(k)) == dictionary and type(v) == dictionary {
+        deep-merge(result.at(k), v)
+      } else {
+        v
+      }
+    )
+  }
+  result
+}
+
+// --------------------------------------------------
+// Canonical defaults — every key is available as
+// cfg.<key> inside all style applicators and templates.
+// --------------------------------------------------
 #let core-styles = (
-  // text
-  lang: "en",
+  // ── Text ───────────────────────────────────────
+  lang:          "en",
   fonts: (
-    main: "Libertinus Serif",
-    cjk: "Microsoft YaHei",
-    head: "Libertinus Serif",
+    main:        "Libertinus Serif",
+    cjk:         "Microsoft YaHei",
+    head:        "Libertinus Serif",
+    math:        "New Computer Modern Math",
+    math-latin:  "Libertinus Serif",  // covers \p{Latin} inside math
   ),
-  normal-size: normal-size,
-  script-size: script-size,
-  // page
-  paper: "a4",
-  // heading
+  script-size:    7.97224pt,
+  footnote-size:  8.50012pt,
+  small-size:     9.24994pt,
+  normal-size:   10.00002pt,
+  // ── Page ───────────────────────────────────────
+  paper:  "a4",
+  margin: (top: 117pt, left: 118pt, right: 119pt, bottom: 96pt),
+  // none      → centred page-number footer, empty header
+  // function  → called as header(page-num) => content
+  // content   → placed verbatim every page
+  header: none,
+  // ── Headings ───────────────────────────────────
   head-numbering: "1.1",
-  head1-size: 1.4em,
-  head2-size: 1.2em,
-  head-size: 1.2em,
-  head1-spacing: 0.8em,
-  head2-spacing: 0.6em,
-  head-spacing: 0.4em,
-  // math
+  head1-size:     1.4em,
+  head2-size:     1.2em,
+  head-size:      1.2em,   // level 3+
+  head1-spacing:  0.8em,
+  head2-spacing:  0.6em,
+  head-spacing:   0.4em,   // level 3+
+  head1-above:    1.8em,   // v-space above levels 1–2
+  head-above:     1.2em,   // v-space above level 3+
+  head-below:     1.0em,   // v-space below all levels
+  // ── Math ───────────────────────────────────────
+  eq-numbering:   "(1.1)",
   eq-chapterwise: true,
-  eq-numbering: "(1.1)",
-  // fig
-  fig-gap: 17pt,
+  // ── Figures ────────────────────────────────────
+  fig-gap:        17pt,
+  fig-padding:    23pt,    // horizontal pad on table/image children
 )
 
-// overwritten style
-#let resolve-config = (tmpl-base, cfg) => {
-  let base = core-styles + tmpl-base
-  base + cfg
+// Merge: core ← template-base ← user args (deep for sub-dicts).
+#let resolve-config(tmpl-base, cfg) = {
+  deep-merge(deep-merge(core-styles, tmpl-base), cfg)
 }
+
+// ==================================================
+// Style applicators — each is (cfg, content) so they
+// work directly in `show: f.with(cfg)` chains.
+// ==================================================
 
 #let with-text-style(cfg, content) = {
   set text(
-    font: (
-      (name: cfg.fonts.main, covers: "latin-in-cjk"),
-      cfg.fonts.cjk,
-    ),
+    font: ((name: cfg.fonts.main, covers: "latin-in-cjk"), cfg.fonts.cjk),
     size: cfg.normal-size,
     lang: cfg.lang,
   )
@@ -53,107 +87,104 @@
 
 #let with-page-style(cfg, content) = {
   set page(
-    paper: cfg.paper,
-    // margin: if cfg.paper != "a4" {
-    //   (
-    //     top: (116pt / 279mm) * 100%,
-    //     left: (126pt / 216mm) * 100%,
-    //     right: (128pt / 216mm) * 100%,
-    //     bottom: (94pt / 279mm) * 100%,
-    //   )
-    // } else {
-    //   (
-    //     top: 117pt,
-    //     left: 118pt,
-    //     right: 119pt,
-    //     bottom: 96pt,
-    //   )
-    // },
-
-    header-ascent: 14pt,
+    paper:          cfg.paper,
+    margin:         cfg.margin,
+    header-ascent:  14pt,
     header: context {
+      let h = cfg.header
       let i = counter(page).get().first()
+      if   type(h) == function { h(i) }
+      else if h != none        { h    }
+      // none → empty; footer carries the page number
     },
-
     footer-descent: 14pt,
     footer: context {
-      let i = counter(page).get().first()
-      align(center, text(size: cfg.script-size, [#i]))
+      align(center, text(size: cfg.script-size,
+                         str(counter(page).get().first())))
     },
   )
   content
 }
 
-#let core-heading(cfg, it, content) = {
-  let size = if it.level == 1 { cfg.head1-size } else if it.level == 2 { cfg.head2-size } else { cfg.head-size }
-  let spacing = if it.level == 1 { cfg.head1-spacing } else if it.level == 2 { cfg.head2-spacing } else {
-    cfg.head-spacing
-  }
-  let vtop = if it.level == 1 { 1.8em } else if it.level == 2 { 1.8em } else { 1.2em }
+// --------------------------------------------------
+// Headings
+// --------------------------------------------------
+
+// Render a heading at `level` with the correct size,
+// spacing, and font from cfg.  Takes an int directly so
+// callers don't need to pass the full heading element.
+#let core-heading(cfg, level, body) = {
+  let size    = if level == 1      { cfg.head1-size    }
+                else if level == 2 { cfg.head2-size    }
+                else               { cfg.head-size     }
+  let spacing = if level == 1      { cfg.head1-spacing }
+                else if level == 2 { cfg.head2-spacing }
+                else               { cfg.head-spacing  }
+  let above   = if level <= 2      { cfg.head1-above   }
+                else               { cfg.head-above    }
 
   set align(left)
   set text(font: cfg.fonts.head, lang: cfg.lang, weight: "bold", size: size)
   set par(spacing: spacing, first-line-indent: 0em)
-  v(vtop, weak: true) // Top spacing
-  content
-  v(1.0em, weak: true) // Bottom spacing
+  v(above, weak: true)
+  body
+  v(cfg.head-below, weak: true)
 }
 
-#let appendix-heading-it(it) = {
+#let _fmt-normal-heading(it) = {
+  if it.numbering != none { counter(heading).display(it.numbering); h(0.3em) }
+  it.body
+}
+
+#let _fmt-appendix-heading(it) = {
   if it.level == 1 and it.numbering != none {
-    [#it.supplement #counter(heading).display():]
+    it.supplement; [ ]; counter(heading).display(); [:]
   } else if it.numbering != none {
-    [#counter(heading).display()]
+    counter(heading).display()
   }
   h(0.3em)
   it.body
 }
 
-#let normal-heading-it(it) = {
-  if it.numbering != none {
-    counter(heading).display(it.numbering)
-    h(0.3em)
-  }
-  it.body
-}
-
 #let with-heading-style(cfg, content) = {
   set heading(numbering: cfg.head-numbering)
-  set heading(supplement: cfg.supplement) if "supplement" in cfg
-
-  show heading: it => {
-    let body = normal-heading-it(it)
-    show: core-heading.with(cfg, it)
-    body
-  }
-
+  if "supplement" in cfg { set heading(supplement: cfg.supplement) }
+  show heading: it => core-heading(cfg, it.level, _fmt-normal-heading(it))
   content
+}
+
+// --------------------------------------------------
+// Math
+// --------------------------------------------------
+
+// Returns a numbering value for math.equation — either a
+// chapterwise closure or the raw format string.
+#let _make-eq-numbering(fmt, chapterwise) = {
+  if chapterwise {
+    (..n) => numbering(fmt, counter(heading).get().first(), n.pos().first())
+  } else {
+    fmt
+  }
 }
 
 #let with-math-style(cfg, content) = {
-  let chapterwise-numbering = (..num) => numbering(cfg.eq-numbering, counter(heading).get().first(), num.pos().first())
-
-  set math.equation(numbering: eq-numbering) if not cfg.eq-chapterwise
-  set math.equation(numbering: chapterwise-numbering) if cfg.eq-chapterwise
-
-  // text for italic
+  set math.equation(numbering: _make-eq-numbering(cfg.eq-numbering, cfg.eq-chapterwise))
   show math.equation: set text(font: (
-    (name: "Libertinus Serif", covers: regex("\p{Latin}")),
-    "New Computer Modern Math",
+    (name: cfg.fonts.math-latin, covers: regex("\p{Latin}")),
+    cfg.fonts.math,
   ))
-
   show math.equation: set block(above: 2em, below: 2em)
-
   set list(indent: 24pt, body-indent: 5pt)
   set enum(indent: 24pt, body-indent: 5pt)
-
   content
 }
 
+// --------------------------------------------------
+// Figures
+// --------------------------------------------------
+
 #let with-figure-style(cfg, content) = {
-  set figure(
-    gap: cfg.fig-gap,
-  )
+  set figure(gap: cfg.fig-gap)
   show figure: it => {
     show figure.caption: caption => {
       set par(justify: true)
@@ -165,21 +196,22 @@
       [. ]
       caption.body
     }
-
-    // Around space
-    show selector.or(table, image): pad.with(x: 23pt)
-
+    show selector.or(table, image): pad.with(x: cfg.fig-padding)
     it
   }
   content
 }
 
+// --------------------------------------------------
+// Appendix
+// --------------------------------------------------
+
 #let appendix(
-  supplement: "Appendix",
+  supplement:     "Appendix",
   head-numbering: "A.1",
-  eq-numbering: "1.1",
+  eq-numbering:   "(A.1)",
   eq-chapterwise: true,
-  reset: true,
+  reset:          true,
   content,
 ) = {
   if reset {
@@ -187,19 +219,11 @@
     counter(figure.where(kind: image)).update(0)
     counter(figure.where(kind: table)).update(0)
   }
-
   set heading(numbering: head-numbering, supplement: supplement)
+  // context is required here because config-store is a state.
   show heading: it => context {
-    let cfg = config-store.get()
-    let inner = appendix-heading-it(it)
-    show: core-heading.with(cfg, it)
-    inner
+    core-heading(config-store.get(), it.level, _fmt-appendix-heading(it))
   }
-
-  let chapterwise-numbering = (..num) => numbering(eq-numbering, counter(heading).get().first(), num.pos().first())
-
-  set math.equation(numbering: eq-numbering) if not eq-chapterwise
-  set math.equation(numbering: chapterwise-numbering) if eq-chapterwise
-
+  set math.equation(numbering: _make-eq-numbering(eq-numbering, eq-chapterwise))
   content
 }

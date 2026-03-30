@@ -1,85 +1,102 @@
-#import "../core.typ": *
-#import "../deps.typ": components as comp, kouhu, show-cn-fakebold, utils, zh
+// ==================================================
+// templates/thesis-cp-zh.typ
+// Undergraduate / postgraduate thesis — Chinese (XJNU style)
+// ==================================================
 
-// KaiTi/SimSun/SimHei
-#let title-size = zh(-2)
-#let head-size = zh(3)
-#let normal-size = zh(-4)
-#let script-size = zh(5)
-#let label-size = title-size * 5
-#let val-size = title-size * 10
+#import "../core.typ": *
+#import "../deps.typ": show-cn-fakebold, zh
+#import "../utils.typ": field-theme, mask-field
+
+// Standard Chinese academic type sizes
+#let _title-size  = zh(-2)   // 小二 — used for cover heading & info grid
+#let _head-size   = zh(3)    // 三号 — abstract heading
+#let _normal-size = zh(-4)   // 小四 — body text
+#let _script-size = zh(5)    // 五号 — keywords
 
 #let base-styles = (
-  // text
-  lang: "en",
+  lang: "zh",
   fonts: (
     main: "Times New Roman",
-    cjk: "SimSun",
+    cjk:  "SimSun",
     head: ("Times New Roman", "SimHei"),
   ),
-  normal-size: normal-size,
-  script-size: script-size,
-  // page
-  paper: "a4",
-  // heading
+  normal-size:    _normal-size,
+  script-size:    _script-size,
+  paper:          "a4",
+  margin:         (top: 2.54cm, bottom: 2.54cm, left: 3.17cm, right: 3.17cm),
   head-numbering: "1.1",
-  head1-size: head-size,
-  head2-size: head-size,
-  head-size: head-size,
-  // math
-  eq-numbering: "(1.1)",
+  head1-size:     _head-size,
+  head2-size:     _head-size,
+  head-size:      _head-size,
+  eq-numbering:   "(1.1)",
   eq-chapterwise: true,
-  // fig
-  fig-gap: 17pt,
+  fig-gap:        17pt,
 )
 
+// --------------------------------------------------
+// Cover page
+// --------------------------------------------------
 #let cover(
-  title: (),
-  author: "",
+  title:      (),
+  author:     "",
   student-id: "",
   department: "",
+  anonymous:  false,
   fonts: (
     title: ("Times New Roman", "KaiTi"),
     label: ("Times New Roman", "SimSun"),
     value: ("Times New Roman", "KaiTi"),
   ),
 ) = {
-  let theme = comp.field-theme(
-    font-label: fonts.label,
-    font-value: fonts.value,
-    size-label: title-size,
-    size-value: title-size,
+  // Apply masking when compiling anonymous copies.
+  let a = mask-field(author,     anonymous)
+  let s = mask-field(student-id, anonymous)
+  let d = mask-field(department, anonymous)
+
+  // Column widths derived from the title font size so the
+  // grid scales naturally if the size is changed.
+  let label-w = _title-size * 5
+  let value-w = _title-size * 10
+
+  let theme = field-theme(
+    font-label:   fonts.label,
+    size-label:   _title-size,
+    weight-label: "bold",
+    font-value:   fonts.value,
+    size-value:   _title-size,
   )
 
   show: show-cn-fakebold
   set align(center + horizon)
-  set text(size: title-size, font: fonts.title, weight: "bold")
+  set text(size: _title-size, font: fonts.title, weight: "bold")
 
+  // Title — plain content or (zh: …, en: …) dict.
   if type(title) == dictionary {
-    par([
-      题目：#title.zh
-    ])
-    par([
-      Title: #title.en
-    ])
+    par(leading: 1.5em, {
+      if "zh" in title { [题目：]; title.zh; linebreak() }
+      if "en" in title { [Title: ]; title.en }
+    })
   } else {
-    title
+    par(title)
   }
 
   v(4em)
 
-  block(width: 320pt)[
+  block(width: label-w + value-w)[
     #grid(
-      columns: (label-size, val-size),
+      columns: (label-w, value-w),
       column-gutter: 0pt,
-      row-gutter: title-size,
-      ..(theme.row)("院系名称：", department),
-      ..(theme.row)("学生姓名：", author),
-      ..(theme.row)("学生学号：", student-id)
+      row-gutter:    _title-size,
+      ..theme.row("院系名称：", d),
+      ..theme.row("学生姓名：", a),
+      ..theme.row("学生学号：", s),
     )
   ]
 }
 
+// --------------------------------------------------
+// Abstract page
+// --------------------------------------------------
 #let abstract(
   body,
   keywords: (),
@@ -91,27 +108,25 @@
   show: show-cn-fakebold
   set par(justify: true)
 
-  align(center, {
-    text(font: fonts.label, size: head-size, weight: "bold", "摘  要")
-  })
-
+  align(center, text(font: fonts.label, size: _head-size, weight: "bold", "摘  要"))
   v(1em)
 
   {
     set par(leading: 1.5em, first-line-indent: 2em)
-    text(font: fonts.value, size: normal-size, body)
+    text(font: fonts.value, size: _normal-size, body)
   }
 
-  v(1em)
-
-  if keywords != none {
-    set text(size: normal-size)
-    text(font: fonts.label, "关键词： ", weight: "bold")
-    let keywords = utils.join-by-sep(keywords, separator: "，")
-    text(font: fonts.value, keywords)
+  let kws = if keywords == none { () } else { keywords }
+  if kws.len() > 0 {
+    v(1em)
+    text(font: fonts.label, size: _normal-size, weight: "bold", "关键词：")
+    text(font: fonts.value, size: _normal-size, kws.join("；"))
   }
 }
 
+// --------------------------------------------------
+// Template entry point
+// --------------------------------------------------
 #let tmpl = args => {
   let cfg = resolve-config(base-styles, args)
   config-store.update(cfg)
@@ -119,8 +134,8 @@
   set std.bibliography(style: "../bib/bib-xjnu.csl", title: [参考文献])
   show cite.where(style: auto): it => {
     if it.supplement != none {
-      let (key, ..args) = it.fields()
-      cite(it.key, ..args, style: "../bib/cite-zh.csl")
+      let (key, ..rest) = it.fields()
+      cite(it.key, ..rest, style: "../bib/cite-zh.csl")
     } else {
       it
     }
@@ -128,13 +143,17 @@
 
   show: show-cn-fakebold
 
-  // Single author
-  let author = cfg.authors.at(0).name
-  let department = cfg.authors.at(0).department
-  let student-id = cfg.authors.at(0).student-id
-  cover(author: author, department: department, student-id: student-id, title: cfg.title)
+  // Thesis expects a single author.
+  let auth = cfg.authors.at(0, default: (:))
+  cover(
+    title:      cfg.title,
+    author:     auth.at("name",       default: ""),
+    student-id: auth.at("student-id", default: ""),
+    department: auth.at("department", default: ""),
+  )
   pagebreak()
-  abstract(cfg.abstract, keywords: cfg.keywords)
+
+  abstract(cfg.abstract, keywords: cfg.at("keywords", default: ()))
   pagebreak()
 
   show: with-page-style.with(cfg)
@@ -144,10 +163,6 @@
   show: with-figure-style.with(cfg)
 
   set par(justify: true, leading: 1.5em, spacing: 1em, first-line-indent: 2em)
-  //
+
   args.body
 }
-
-#cover(title: (en: lorem(8), zh: kouhu(length: 8)), author: kouhu(offset: 5, length: 5))
-#pagebreak()
-#abstract(kouhu(length: 100), keywords: (kouhu(length: 2), kouhu(offset: 10, length: 3)))
