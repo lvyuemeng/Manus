@@ -123,12 +123,14 @@
   let above   = if level <= 2      { cfg.head1-above   }
                 else               { cfg.head-above    }
 
-  set align(left)
-  set text(font: cfg.fonts.head, lang: cfg.lang, weight: "bold", size: size)
-  set par(spacing: spacing, first-line-indent: 0em)
-  v(above, weak: true)
-  body
-  v(cfg.head-below, weak: true)
+  block(sticky: true)[
+    #set align(left)
+    #set text(font: cfg.fonts.head, lang: cfg.lang, weight: "bold", size: size)
+    #set par(spacing: spacing, first-line-indent: 0em)
+    #v(above, weak: true)
+    #body
+    #v(cfg.head-below, weak: true)
+  ]
 }
 
 #let _fmt-normal-heading(it) = {

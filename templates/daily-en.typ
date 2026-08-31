@@ -13,6 +13,21 @@
   let cfg = resolve-config(base-styles, args)
   config-store.update(cfg)
 
+  let title-body = if type(args.title) == dictionary {
+    if "en" in args.title { args.title.en }
+    else { args.title.values().first() }
+  } else {
+    args.title
+  }
+  let metadata-authors = args.authors
+    .filter(author => "name" in author and type(author.name) == str)
+    .map(author => author.name)
+
+  set document(title: title-body)
+  if metadata-authors.len() > 0 { set document(author: metadata-authors) }
+  if args.abstract != none { set document(description: args.abstract) }
+  if args.keywords != none { set document(keywords: args.keywords) }
+
   show: with-page-style.with(cfg)
   show: with-text-style.with(cfg)
   show: with-math-style.with(cfg)
@@ -23,14 +38,8 @@
 
   // ── Title ───────────────────────────────────────
   align(center, {
-    // Accepts plain content or a (zh: …, en: …) dict.
-    if type(args.title) == dictionary {
-      set text(size: 2.2em, weight: "bold")
-      if "zh" in args.title { par(args.title.zh) }
-      if "en" in args.title { par(args.title.en) }
-    } else {
-      text(size: 2.2em, weight: "bold", args.title)
-    }
+    show title: set text(size: 2.2em, weight: "bold")
+    title(title-body)
 
     v(25pt, weak: true)
 
